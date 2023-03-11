@@ -2,6 +2,6 @@ PROG=sync
 SRCS=sync.c
 MAN=
 
-CFLAGS+=-g
+CFLAGS+=-g -Wall
 
 .include <bsd.prog.mk>
