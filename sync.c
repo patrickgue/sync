@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <dirent.h>
+
 #include <string.h>
 
 #include "sync.h"
+#include "log.h"
 
 int main(int argc, char **argv)
 {
@@ -13,12 +13,13 @@ int main(int argc, char **argv)
     struct s_sync_changes changes_list;
     sync_state_init(&state, NULL);
 
-    sync_collect_changes(state.locations[0].path, &changes_list);
+    sync_changes_init(&changes_list);
+    sync_collect_changes(&state, state.locations[0].path, &changes_list);
     
     return 0;
 }
 
-void sync_collect_changes(char *location, struct s_sync_changes *changes_list)
+void sync_collect_changes(struct s_sync *state, char *location, struct s_sync_changes *changes_list)
 {
     DIR *dir;
     char full_path[PATH_LEN];
@@ -36,17 +37,19 @@ void sync_collect_changes(char *location, struct s_sync_changes *changes_list)
         
         snprintf(full_path, PATH_LEN, "%s/%s", location, entry->d_name);
         stat(full_path, &st);
-        printf("%ld %s\n", st.st_mtime, full_path);
+        LOG("%ld %s", st.st_mtime, full_path);
 
         if (entry->d_type == DT_DIR)
         {
-            sync_collect_changes(full_path, changes_list);
+            sync_collect_changes(state, full_path, changes_list);
         }
         else
         {
-
-        }
-        
+            if (st.st_mtime > state->last_sync)
+            {
+                sync_changes_append(changes_list, full_path, entry, &st);
+            }
+        }   
     }
 }
 
@@ -78,10 +81,11 @@ void sync_changes_init(struct s_sync_changes *changes)
     changes->location_count = 0;
 }
 
-void sync_changes_append(struct s_sync_changes *changes, struct s_sync_location *loc)
+void sync_changes_append(struct s_sync_changes *changes, char *path, struct dirent *entry, struct stat *st)
 {
     changes->locations = realloc(changes->locations, sizeof(struct s_sync_location) * (changes->location_count + 1));
 
-    memcpy(changes->locations + changes->location_count, loc, sizeof(struct s_sync_location));
+    changes->locations[changes->location_count].d_type = entry->d_type;
+    strncpy(changes->locations[changes->location_count].path, path, PATH_LEN);
     changes->location_count++;
 }
