@@ -65,5 +65,6 @@ void sync_find_missing_files  (
 void sync_debug_list_changes  (struct s_sync_file_list *);
 
 long swap_endianness_long(long);
+int swap_endianness_int(int);
 
 #endif

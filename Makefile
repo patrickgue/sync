@@ -1,5 +1,5 @@
 PROG=sync
-SRCS=sync.c
+SRCS=sync.c test.c
 MAN=
 
 CFLAGS+=-g -Wall
