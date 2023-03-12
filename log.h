@@ -1,6 +1,8 @@
 #ifndef _log_h
 #define _log_h
 
+#define DEBUG 1
+
 #define LOG(...) {                              \
     time_t t = time(NULL);                      \
     struct tm *tm = localtime(&t);              \

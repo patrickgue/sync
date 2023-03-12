@@ -19,16 +19,24 @@ int main(int argc, char **argv)
     sync_collect_changes(&state, state.locations[0].path, &changes_list, &all_files_list);
     sync_read_file_tree(&state, &old_files_list);
 
-    LOG("ALL FILES LIST (%d)", all_files_list.location_count);
-    sync_debug_list_changes(&all_files_list);
-
-    LOG("OLD FILES LIST (%d)", old_files_list.location_count);
-    sync_debug_list_changes(&old_files_list);
-
+    if (DEBUG)
+    {
+        LOG("ALL FILES LIST (%d)", all_files_list.location_count);
+        sync_debug_list_changes(&all_files_list);
+    }
+    
+    if (DEBUG)
+    {
+        LOG("OLD FILES LIST (%d)", old_files_list.location_count);
+        sync_debug_list_changes(&old_files_list);
+    }
     sync_find_missing_files(&changes_list, &old_files_list, &all_files_list);
 
-    LOG("CHANGES LIST (%d)", changes_list.location_count);
-    sync_debug_list_changes(&changes_list);
+    if (DEBUG)
+    {
+        LOG("CHANGES LIST (%d)", changes_list.location_count);
+        sync_debug_list_changes(&changes_list);
+    }
 
     sync_store_tts(&state);
     sync_store_file_tree(&state, &all_files_list);
@@ -79,7 +87,8 @@ void sync_state_init(struct s_sync *state, char *base_path)
     char config_path[BUFSIZE], lbuf[BUFSIZE], key[BUFSIZE], value[BUFSIZE];
     int i;
 
-    LOG("PARSE CONFIG");
+    if (DEBUG)
+        LOG("PARSE CONFIG");
 
     state->locations = malloc(0);
     state->location_count = 0;
@@ -90,7 +99,9 @@ void sync_state_init(struct s_sync *state, char *base_path)
         base_path = malloc(sizeof(char) * PATH_LEN);
         snprintf(base_path, PATH_LEN, "%s/.sync", getenv("HOME"));
     }
-    LOG("Config base path %s", base_path);
+
+    if (DEBUG)
+        LOG("Config base path %s", base_path);
 
     snprintf(config_path, PATH_LEN, "%s/sync.conf", base_path);
     snprintf(state->tts_file_path, PATH_LEN, "%s/sync.tts", base_path);
@@ -120,7 +131,9 @@ void sync_state_init(struct s_sync *state, char *base_path)
             }
             strncpy(value, lbuf + i + 1, BUFSIZE);
 
-            LOG("%16s -> %s", key, value);
+            if (DEBUG)
+                LOG("%16s -> %s", key, value);
+
             if (strcmp(key, "host") == 0)
                 strncpy(state->host, value, BUFSIZE);
             else if (strcmp(key, "user") == 0)
