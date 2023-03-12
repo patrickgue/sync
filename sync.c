@@ -225,7 +225,11 @@ void sync_read_file_tree(struct s_sync *state, struct s_sync_file_list *tree)
 
     for (i = 0; i < tree->location_count; i++)
     {
+        fread(&(tree->locations[i].d_type), sizeof(char), 1, tree_file);
         fread(&(tree->locations[i].hash), sizeof(long), 1, tree_file);
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        tree->locations[i].hash = swap_endianness_long(tree->locations[i].hash);
+#endif
         fread(tree->locations[i].path, sizeof(char), PATH_LEN, tree_file);
     }
     fclose(tree_file);
@@ -246,7 +250,14 @@ void sync_store_file_tree(struct s_sync *state, struct s_sync_file_list *tree)
 
     for (i = 0; i < tree->location_count; i++)
     {
+
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        fwrite(&(swap_endianness_long(tree->locations[i].hash)), sizeof(long), 1, tree_file);
+#else
         fwrite(&(tree->locations[i].hash), sizeof(long), 1, tree_file);
+#endif
+
+        fwrite(&(tree->locations[i].d_type), sizeof(char), 1, tree_file);
         fwrite(tree->locations[i].path, sizeof(char), PATH_LEN, tree_file);
     }
     fclose(tree_file);    
@@ -286,6 +297,20 @@ long sync_path_hash (char *str)
 
     return hash;
 }
+
+
+long swap_endianness_long(long i)
+{
+    return ((i & 0xff00000000000000) >> 56) +
+        ((i & 0x00ff000000000000) >> 48) +
+        ((i & 0x0000ff0000000000) >> 40) +
+        ((i & 0x000000ff00000000) >> 32) +
+        ((i & 0x00000000ff000000) >> 24) +
+        ((i & 0x0000000000ff0000) >> 16) +
+        ((i & 0x000000000000ff00) >> 8) +
+        ((i & 0x00000000000000ff));
+}
+
 
 /*
  * =====================

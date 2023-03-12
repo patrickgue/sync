@@ -6,7 +6,7 @@
 #include <dirent.h>
 #include <stdbool.h>
 
-#define PATH_LEN 512
+#define PATH_LEN 128
 #define BUFSIZE 1024
 
 #define DIR_LINKS(PATH) strcmp(PATH, ".") == 0 || strcmp(PATH, "..") == 0
@@ -63,5 +63,7 @@ void sync_find_missing_files  (
     struct s_sync_file_list *);
 
 void sync_debug_list_changes  (struct s_sync_file_list *);
+
+long swap_endianness_long(long);
 
 #endif
