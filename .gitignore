@@ -2,3 +2,4 @@
 *.d
 .depend
 sync
+lib
