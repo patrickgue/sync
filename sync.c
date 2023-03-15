@@ -1,7 +1,17 @@
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <ctype.h>
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <string.h>
+
 
 #include "sync.h"
 #include "log.h"
@@ -11,6 +21,7 @@ int main(int argc, char **argv)
 {
     struct s_sync state;
     struct s_sync_file_list changes_list, all_files_list, old_files_list;
+    struct s_sync_remote remote;
 
     if (DEBUG)
         test();
@@ -41,6 +52,10 @@ int main(int argc, char **argv)
         LOG("CHANGES LIST (%d)", changes_list.location_count);
         sync_debug_list_changes(&changes_list);
     }
+
+    sync_remote_init(&state, &remote);
+
+    sync_remote_cleanup(&remote);
 
     sync_store_tts(&state);
     sync_store_file_tree(&state, &all_files_list);
@@ -97,6 +112,7 @@ void sync_state_init(struct s_sync *state, char *base_path)
     state->locations = malloc(0);
     state->location_count = 0;
     strcpy(state->tts_file_path, "");
+    strcpy(state->password, "");
 
     if (base_path == NULL)
     {
@@ -146,6 +162,10 @@ void sync_state_init(struct s_sync *state, char *base_path)
                 state->port = atoi(value);
             else if (strcmp(key, "tts:file") == 0)
                 strncpy(state->tts_file_path, value, PATH_LEN);
+            else if (strcmp(key, "ssh:public:key") == 0)
+                strncpy(state->public_key, value, PATH_LEN);
+            else if (strcmp(key, "ssh:private:key") == 0)
+                strncpy(state->private_key, value, PATH_LEN);
             else if (strcmp(key, "location") == 0)
             {
                 state->locations = realloc(state->locations, sizeof(struct s_sync_location) * (state->location_count + 1));
@@ -335,4 +355,59 @@ void sync_debug_list_changes(struct s_sync_file_list *changes)
             changes->locations[i].hash,
             changes->locations[i].path);
     }
+}
+
+
+void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
+{
+    int                   rc;
+    struct sockaddr_in    sin;
+    
+    rc = libssh2_init(0);
+
+    if (rc != 0)
+    {
+        ERR("Unable to initialize ssh");
+        exit(1);
+    }
+ 
+    remote->sock =        socket(AF_INET, SOCK_STREAM, 0);
+ 
+    sin.sin_family =      AF_INET;
+    sin.sin_port =        htons(state->port);
+    sin.sin_addr.s_addr = inet_addr(state->host);
+
+    if(connect(remote->sock, (struct sockaddr*)(&sin),
+               sizeof(struct sockaddr_in)) != 0) {
+        ERR("Failed to connect");
+        exit(1);
+    }
+    
+    remote->session = libssh2_session_init();
+
+    if (!remote->session)
+    {
+        ERR("Failed to init session");
+        exit(1);
+    }
+
+    while((rc = libssh2_userauth_publickey_fromfile(remote->session, state->user,
+                                                    state->public_key,
+                                                    state->private_key,
+                                                    state->password)) ==
+          LIBSSH2_ERROR_EAGAIN);
+    if(rc) {
+        ERR("Authentication by public key failed (%d)", rc);
+        exit(1);
+    }
+
+    libssh2_trace(remote->session, ~0);
+}
+
+void sync_remote_cleanup(struct s_sync_remote *remote)
+{
+    libssh2_session_disconnect(remote->session, "Close Connection");
+    libssh2_session_free(remote->session);
+
+    close(remote->sock);
 }
