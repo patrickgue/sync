@@ -16,7 +16,7 @@
 #define PATH_LEN 128
 #define BUFSIZE 1024
 
-#define DIR_LINKS(PATH) strcmp(PATH, ".") == 0 || strcmp(PATH, "..") == 0
+#define DIR_LINKS(PATH) (strcmp(PATH, ".") == 0 || strcmp(PATH, "..") == 0)
 
 /* generic type for file locations */
 struct s_sync_location
@@ -57,7 +57,6 @@ struct s_sync_remote
     LIBSSH2_SESSION          *session;
     LIBSSH2_CHANNEL          *channel;
     LIBSSH2_SFTP             *sftp_session;
-    LIBSSH2_SFTP_HANDLE      *sftp_handle;
 };
 
 void sync_state_init          (struct s_sync*, char *);
