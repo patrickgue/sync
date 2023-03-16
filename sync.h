@@ -9,6 +9,8 @@
 #include <arpa/inet.h>
 
 #include <libssh2.h>
+#include <libssh2_sftp.h>
+
 
 
 #define PATH_LEN 128

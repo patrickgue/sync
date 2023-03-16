@@ -376,12 +376,17 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
     sin.sin_port =        htons(state->port);
     sin.sin_addr.s_addr = inet_addr(state->host);
 
-    if(connect(remote->sock, (struct sockaddr*)(&sin),
-               sizeof(struct sockaddr_in)) != 0)
+    if (DEBUG)
+        LOG("SOCKET: CONNECT");
+
+    if(connect(remote->sock, (struct sockaddr*)(&sin), sizeof(struct sockaddr_in)) != 0)
     {
         ERR("Failed to connect");
         exit(1);
     }
+
+    if (DEBUG)
+        LOG("SSH: INIT SESSION");
     
     remote->session = libssh2_session_init();
 
@@ -391,13 +396,18 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
         exit(1);
     }
 
+    if (DEBUG)
+        LOG("SSH: HANDSHAKE");
+
     while ((rc = libssh2_session_handshake(remote->session, remote->sock)) == LIBSSH2_ERROR_EAGAIN);
-    
+
     if(rc)
     {
         ERR("Failure establishing SSH session: %d", rc);
         exit(1);
     }
+
+    libssh2_trace(remote->session, ~0);
 
     while((rc = libssh2_userauth_publickey_fromfile(remote->session,
                                                     state->user,
@@ -411,7 +421,7 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
         exit(1);
     }
 
-    libssh2_trace(remote->session, ~0);
+
 }
 
 void sync_remote_cleanup(struct s_sync_remote *remote)
