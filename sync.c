@@ -152,7 +152,7 @@ void sync_state_init(struct s_sync *state, char *base_path)
             strncpy(value, lbuf + i + 1, BUFSIZE);
 
             if (DEBUG)
-                LOG("%16s -> %s", key, value);
+                LOG("%16s -> '%s'", key, value);
 
             if (strcmp(key, "host") == 0)
                 strncpy(state->host, value, BUFSIZE);
@@ -172,7 +172,6 @@ void sync_state_init(struct s_sync *state, char *base_path)
                 strncpy(state->locations[state->location_count].path, value, PATH_LEN);
                 state->location_count++;
             }
-
         }
     }
     fclose(config_file);
@@ -365,7 +364,7 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
     
     rc = libssh2_init(0);
 
-    if (rc != 0)
+    if (rc)
     {
         ERR("Unable to initialize ssh");
         exit(1);
@@ -378,7 +377,8 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
     sin.sin_addr.s_addr = inet_addr(state->host);
 
     if(connect(remote->sock, (struct sockaddr*)(&sin),
-               sizeof(struct sockaddr_in)) != 0) {
+               sizeof(struct sockaddr_in)) != 0)
+    {
         ERR("Failed to connect");
         exit(1);
     }
@@ -391,12 +391,22 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
         exit(1);
     }
 
-    while((rc = libssh2_userauth_publickey_fromfile(remote->session, state->user,
+    while ((rc = libssh2_session_handshake(remote->session, remote->sock)) == LIBSSH2_ERROR_EAGAIN);
+    
+    if(rc)
+    {
+        ERR("Failure establishing SSH session: %d", rc);
+        exit(1);
+    }
+
+    while((rc = libssh2_userauth_publickey_fromfile(remote->session,
+                                                    state->user,
                                                     state->public_key,
                                                     state->private_key,
                                                     state->password)) ==
           LIBSSH2_ERROR_EAGAIN);
-    if(rc) {
+    if(rc)
+    {
         ERR("Authentication by public key failed (%d)", rc);
         exit(1);
     }
