@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     struct s_sync state;
     struct s_sync_file_list changes_list, all_files_list, old_files_list;
     struct s_sync_remote remote;
-
+    char path[PATH_LEN];
     if (DEBUG)
         test();
     
@@ -31,7 +31,8 @@ int main(int argc, char **argv)
     sync_changes_init(&all_files_list);
     sync_changes_init(&old_files_list);
 
-    sync_collect_changes(&state, state.locations[0].path, &changes_list, &all_files_list);
+    snprintf(path, PATH_LEN, "%s/%s", state.local_base_dir, state.locations[0].path);
+    sync_collect_changes(&state, path, &changes_list, &all_files_list);
     sync_read_file_tree(&state, &old_files_list);
 
     if (DEBUG)
@@ -54,7 +55,6 @@ int main(int argc, char **argv)
     }
 
     sync_remote_init(&state, &remote);
-
     sync_remote_cleanup(&remote);
 
     sync_store_tts(&state);
@@ -82,7 +82,7 @@ void sync_collect_changes(struct s_sync *state,
             continue;
         }
         
-        snprintf(full_path, PATH_LEN, "%s/%s", location, entry->d_name);
+        snprintf(full_path, BUFSIZE, "%s/%s", location, entry->d_name);
         stat(full_path, &st);
 
         sync_changes_append(all_files_list, full_path, entry, &st);
@@ -113,6 +113,7 @@ void sync_state_init(struct s_sync *state, char *base_path)
     state->location_count = 0;
     strcpy(state->tts_file_path, "");
     strcpy(state->password, "");
+    strcpy(state->local_base_dir, "");
 
     if (base_path == NULL)
     {
@@ -138,7 +139,7 @@ void sync_state_init(struct s_sync *state, char *base_path)
     while (fgets(lbuf, BUFSIZE, config_file) != NULL)
     {
         lbuf[strlen(lbuf) - 1] = 0; /* remove newline */
-        if (strlen(lbuf) > 0)
+        if (strlen(lbuf) > 0 && lbuf[0] != '#')
         {
             strncpy(key, lbuf, BUFSIZE);
             for (i = 0; i < strlen(key); i++)
@@ -166,6 +167,10 @@ void sync_state_init(struct s_sync *state, char *base_path)
                 strncpy(state->public_key, value, PATH_LEN);
             else if (strcmp(key, "ssh:private:key") == 0)
                 strncpy(state->private_key, value, PATH_LEN);
+            else if (strcmp(key, "local_base_dir") == 0)
+                strncpy(state->local_base_dir, value, PATH_LEN);
+            else if (strcmp(key, "remote_base_dir") == 0)
+                strncpy(state->remote_base_dir, value, PATH_LEN);
             else if (strcmp(key, "location") == 0)
             {
                 state->locations = realloc(state->locations, sizeof(struct s_sync_location) * (state->location_count + 1));
@@ -361,6 +366,7 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
 {
     int                   rc;
     struct sockaddr_in    sin;
+    char                  path[PATH_LEN];
     
     rc = libssh2_init(0);
 
@@ -421,11 +427,80 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
         exit(1);
     }
 
+    remote->sftp_session = libssh2_sftp_init(remote->session);
+    if (!remote->sftp_session)
+    {
+        ERR("Unable to init sftp session");
+        exit(1);
+    }
 
+    libssh2_session_set_blocking(remote->session, 1);
+
+    snprintf(path, PATH_LEN, "%s/%s", state->remote_base_dir, state->locations[0].path);
+    LOG("REMOTE PATH: %s", path);
+
+    remote->sftp_handle = libssh2_sftp_opendir(remote->sftp_session, path);
+
+    sync_remote_read_dir(path, state, remote);
 }
+
+
+void sync_remote_read_dir(char *path, struct s_sync *state, struct s_sync_remote *remote)
+{
+    int rc;
+
+    do {
+        char mem[512];
+        char longentry[512];
+        LIBSSH2_SFTP_ATTRIBUTES attrs;
+
+        /* loop until we fail */
+        rc = libssh2_sftp_readdir_ex(remote->sftp_handle, mem, sizeof(mem),
+                                     longentry, sizeof(longentry), &attrs);
+        if(rc > 0) {
+            /* rc is the length of the file name in the mem
+               buffer */
+
+            if(longentry[0] != '\0') {
+                printf("%s\n", longentry);
+            }
+            else {
+                if(attrs.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) {
+                    /* this should check what permissions it
+                       is and print the output accordingly */
+                    printf("--fix----- ");
+                }
+                else {
+                    printf("---------- ");
+                }
+
+                if(attrs.flags & LIBSSH2_SFTP_ATTR_UIDGID) {
+                    printf("%4d %4d ", (int) attrs.uid, (int) attrs.gid);
+                }
+                else {
+                    printf("   -    - ");
+                }
+
+                if(attrs.flags & LIBSSH2_SFTP_ATTR_SIZE) {
+                    printf("%8llu", attrs.filesize);
+                }
+
+                printf("%s\n", mem);
+            }
+        }
+        else
+            break;
+
+    } while(1);
+
+    libssh2_sftp_closedir(remote->sftp_handle);
+}
+
 
 void sync_remote_cleanup(struct s_sync_remote *remote)
 {
+    libssh2_sftp_shutdown(remote->sftp_session);
+
     libssh2_session_disconnect(remote->session, "Close Connection");
     libssh2_session_free(remote->session);
 

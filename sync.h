@@ -34,6 +34,8 @@ struct s_sync
     char                      file_tree_path[PATH_LEN];
     struct s_sync_location   *locations;
     int                       location_count;
+    char                      local_base_dir[PATH_LEN];
+    char                      remote_base_dir[PATH_LEN];
     char                      host[BUFSIZE];
     char                      user[BUFSIZE];
     char                      password[BUFSIZE];
@@ -54,6 +56,8 @@ struct s_sync_remote
     int                       sock;
     LIBSSH2_SESSION          *session;
     LIBSSH2_CHANNEL          *channel;
+    LIBSSH2_SFTP             *sftp_session;
+    LIBSSH2_SFTP_HANDLE      *sftp_handle;
 };
 
 void sync_state_init          (struct s_sync*, char *);
@@ -84,6 +88,10 @@ void sync_debug_list_changes  (struct s_sync_file_list *);
 
 void sync_remote_init (struct s_sync *, struct s_sync_remote *);
 void sync_remote_cleanup      (struct s_sync_remote *);
+void sync_remote_read_dir     (
+    char *,
+    struct s_sync *,
+    struct s_sync_remote *);
 
 long swap_endianness_long(long);
 int swap_endianness_int(int);
