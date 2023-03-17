@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     struct s_sync state;
     struct s_sync_file_list changes_list, all_files_list, old_files_list, remote_file_list;
     struct s_sync_remote remote;
-    char path[BUFSIZE];
+    char path[BUFSIZE], remote_path[BUFSIZE];
     if (DEBUG)
         test();
     
@@ -41,7 +41,7 @@ int main(int argc, char **argv)
         LOG("ALL FILES LIST (%d)", all_files_list.location_count);
         sync_debug_list_changes(&all_files_list);
     }
-    
+
     if (DEBUG)
     {
         LOG("OLD FILES LIST (%d)", old_files_list.location_count);
@@ -55,7 +55,19 @@ int main(int argc, char **argv)
         sync_debug_list_changes(&changes_list);
     }
 
-    sync_remote_init(&state, &remote, &remote_file_list);
+    sync_remote_init(&state, &remote);
+
+    snprintf(remote_path, BUFSIZE, "%s/%s", state.remote_base_dir, state.locations[0].path);
+    LOG("REMOTE PATH: %s", remote_path);
+
+    sync_remote_read_dir(remote_path, &state, &remote, &remote_file_list);
+
+    if (DEBUG)
+    {
+        LOG("REMOTE FILE LIST (%d)", remote_file_list.location_count);
+        sync_debug_list_changes(&remote_file_list);
+    }
+
     sync_remote_cleanup(&remote);
 
     sync_store_tts(&state);
@@ -342,37 +354,16 @@ int swap_endianness_int(int num)
         ((num<<24)&0xff000000);
 }
 
-
-/*
- * =====================
- * =  DEBUG FUNCTIONS  =
- * =====================
- */
-
-void sync_debug_list_changes(struct s_sync_file_list *changes)
-{
-    int i;
-    for (i = 0; i < changes->location_count; i++)
-    {
-        LOG("  %c %c -> %lx %s",
-            changes->locations[i].delete ? '-' : '+',
-            changes->locations[i].d_type == DT_DIR ? 'D' : 'F',
-            changes->locations[i].hash,
-            changes->locations[i].path);
-    }
-}
-
 /*
  * =====================
  * =       REMOTE      =
  * =====================
  */
 
-void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote, struct s_sync_file_list *remote_file_list)
+void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
 {
     int                   rc;
     struct sockaddr_in    sin;
-    char                  path[BUFSIZE];
     
     rc = libssh2_init(0);
 
@@ -441,68 +432,40 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote, struct
     }
 
     libssh2_session_set_blocking(remote->session, 1);
-
-    snprintf(path, BUFSIZE, "%s/%s", state->remote_base_dir, state->locations[0].path);
-    LOG("REMOTE PATH: %s", path);
-
-    
-    sync_remote_read_dir(path, state, remote, remote_file_list);
 }
 
 
 void sync_remote_read_dir(char *path, struct s_sync *state, struct s_sync_remote *remote, struct s_sync_file_list *list)
 {
-    int rc;
+    int rc, remote_base_dir_len;
     char new_path[BUFSIZ], mem[512];
     LIBSSH2_SFTP_HANDLE *sftp_handle;
     LIBSSH2_SFTP_ATTRIBUTES attrs;
 
+    remote_base_dir_len = strlen(state->remote_base_dir);
     sftp_handle = libssh2_sftp_opendir(remote->sftp_session, path);
 
-    do {
+    do
+    {
         rc = libssh2_sftp_readdir(sftp_handle, mem, sizeof(mem), &attrs);
-        if(rc > 0) {
+        if(rc > 0)
+        {
+            if (DIR_LINKS(mem))
+                continue;
 
-            if(attrs.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) {
-                /* this should check what permissions it
-                   is and print the output accordingly */
-                printf("%010lo %c ", attrs.permissions, attrs.permissions & LIBSSH2_SFTP_S_IFREG ? 'F' : 'D');
-            }
-            else {
-                printf("---------- ");
-            }
-
-            if(attrs.flags & LIBSSH2_SFTP_ATTR_UIDGID) {
-                printf("%4d %4d ", (int) attrs.uid, (int) attrs.gid);
-            }
-            else {
-                printf("   -    - ");
-            }
-
-
-
-            if(attrs.flags & LIBSSH2_SFTP_ATTR_SIZE) {
-                printf("%8llu %ld ", attrs.filesize, attrs.flags);
-            }
-
-            printf("%s\n", mem);
-                        
-            if ((attrs.permissions & LIBSSH2_SFTP_S_IFDIR) != 0 && !DIR_LINKS(mem))
+            snprintf(new_path, BUFSIZE, "%s/%s", path, mem);
+            sync_remote_changes_append(list, new_path + remote_base_dir_len, attrs.permissions);
+            if ((attrs.permissions & LIBSSH2_SFTP_S_IFDIR) != 0)
             {
-
-                snprintf(new_path, BUFSIZE, "%s/%s", path, mem);
                 LOG("new_path: %s", new_path);
                 sync_remote_read_dir(new_path, state, remote, list);
             }
-
-
-
         }
         else
             break;
 
-    } while(1);
-
+    }
+    while(1);
     libssh2_sftp_closedir(sftp_handle);
 }
 
@@ -515,4 +478,43 @@ void sync_remote_cleanup(struct s_sync_remote *remote)
     libssh2_session_free(remote->session);
 
     close(remote->sock);
+}
+
+void sync_remote_changes_append(struct s_sync_file_list *changes,
+                                char *path,
+                                long attrs)
+{
+    unsigned char type;
+    changes->locations = realloc(changes->locations, sizeof(struct s_sync_location) * (changes->location_count + 1));
+
+    if (attrs & LIBSSH2_SFTP_S_IFDIR)
+        type = DT_DIR;
+    else if (attrs & LIBSSH2_SFTP_S_IFREG)
+        type = DT_REG;
+    else if (attrs & LIBSSH2_SFTP_S_IFLNK)
+        type = DT_LNK;
+
+    changes->locations[changes->location_count].d_type = type;
+    changes->locations[changes->location_count].hash = sync_path_hash(path);
+    strncpy(changes->locations[changes->location_count].path, path, PATH_LEN);
+    changes->location_count++;
+}
+
+/*
+ * =====================
+ * =  DEBUG FUNCTIONS  =
+ * =====================
+ */
+
+void sync_debug_list_changes(struct s_sync_file_list *changes)
+{
+    int i;
+    for (i = 0; i < changes->location_count; i++)
+    {
+        LOG("  %c %c -> %lx %s",
+            changes->locations[i].delete ? '-' : '+',
+            changes->locations[i].d_type == DT_DIR ? 'D' : 'F',
+            changes->locations[i].hash,
+            changes->locations[i].path);
+    }
 }

@@ -85,14 +85,17 @@ void sync_find_missing_files  (struct s_sync_file_list *,
 void sync_debug_list_changes  (struct s_sync_file_list *);
 
 void sync_remote_init         (struct s_sync *,
-                               struct s_sync_remote *,
-                               struct s_sync_file_list *);
+                               struct s_sync_remote *);
 
 void sync_remote_cleanup      (struct s_sync_remote *);
 void sync_remote_read_dir     (char *,
                                struct s_sync *,
                                struct s_sync_remote *,
                                struct s_sync_file_list *);
+
+void sync_remote_changes_append(struct s_sync_file_list *,
+                                char *,
+                                long);
 
 long swap_endianness_long(long);
 int swap_endianness_int(int);
