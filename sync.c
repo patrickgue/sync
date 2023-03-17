@@ -20,7 +20,7 @@
 int main(int argc, char **argv)
 {
     struct s_sync state;
-    struct s_sync_file_list changes_list, all_files_list, old_files_list;
+    struct s_sync_file_list changes_list, all_files_list, old_files_list, remote_file_list;
     struct s_sync_remote remote;
     char path[BUFSIZE];
     if (DEBUG)
@@ -30,6 +30,7 @@ int main(int argc, char **argv)
     sync_changes_init(&changes_list);
     sync_changes_init(&all_files_list);
     sync_changes_init(&old_files_list);
+    sync_changes_init(&remote_file_list);
 
     snprintf(path, BUFSIZE, "%s/%s", state.local_base_dir, state.locations[0].path);
     sync_collect_changes(&state, path, &changes_list, &all_files_list);
@@ -54,7 +55,7 @@ int main(int argc, char **argv)
         sync_debug_list_changes(&changes_list);
     }
 
-    sync_remote_init(&state, &remote);
+    sync_remote_init(&state, &remote, &remote_file_list);
     sync_remote_cleanup(&remote);
 
     sync_store_tts(&state);
@@ -367,7 +368,7 @@ void sync_debug_list_changes(struct s_sync_file_list *changes)
  * =====================
  */
 
-void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
+void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote, struct s_sync_file_list *remote_file_list)
 {
     int                   rc;
     struct sockaddr_in    sin;
@@ -445,11 +446,11 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
     LOG("REMOTE PATH: %s", path);
 
     
-    sync_remote_read_dir(path, state, remote);
+    sync_remote_read_dir(path, state, remote, remote_file_list);
 }
 
 
-void sync_remote_read_dir(char *path, struct s_sync *state, struct s_sync_remote *remote)
+void sync_remote_read_dir(char *path, struct s_sync *state, struct s_sync_remote *remote, struct s_sync_file_list *list)
 {
     int rc;
     char new_path[BUFSIZ], mem[512];
@@ -491,7 +492,7 @@ void sync_remote_read_dir(char *path, struct s_sync *state, struct s_sync_remote
 
                 snprintf(new_path, BUFSIZE, "%s/%s", path, mem);
                 LOG("new_path: %s", new_path);
-                sync_remote_read_dir(new_path, state, remote);
+                sync_remote_read_dir(new_path, state, remote, list);
             }
 
 

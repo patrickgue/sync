@@ -60,37 +60,39 @@ struct s_sync_remote
 };
 
 void sync_state_init          (struct s_sync*, char *);
-void sync_collect_changes     (
-    struct s_sync*, char*,
-    struct s_sync_file_list *,
-    struct s_sync_file_list *);
+void sync_collect_changes     (struct s_sync*, char*,
+                               struct s_sync_file_list *,
+                               struct s_sync_file_list *);
+
 void sync_changes_init        (struct s_sync_file_list *);
-void sync_changes_append      (
-    struct s_sync_file_list *,
-    char *,
-    struct dirent *,
-    struct stat *);
-void sync_changes_append_loc  (
-    struct s_sync_file_list *,
-    struct s_sync_location *,
-    bool);
+void sync_changes_append      (struct s_sync_file_list *,
+                               char *,
+                               struct dirent *,
+                               struct stat *);
+
+void sync_changes_append_loc  (struct s_sync_file_list *,
+                               struct s_sync_location *,
+                               bool);
+
 void sync_store_tts           (struct s_sync *);
 long sync_path_hash           (char *);
 void sync_read_file_tree      (struct s_sync *, struct s_sync_file_list *);
 void sync_store_file_tree     (struct s_sync *, struct s_sync_file_list *);
-void sync_find_missing_files  (
-    struct s_sync_file_list *,
-    struct s_sync_file_list *,
-    struct s_sync_file_list *);
+void sync_find_missing_files  (struct s_sync_file_list *,
+                               struct s_sync_file_list *,
+                               struct s_sync_file_list *);
 
 void sync_debug_list_changes  (struct s_sync_file_list *);
 
-void sync_remote_init (struct s_sync *, struct s_sync_remote *);
+void sync_remote_init         (struct s_sync *,
+                               struct s_sync_remote *,
+                               struct s_sync_file_list *);
+
 void sync_remote_cleanup      (struct s_sync_remote *);
-void sync_remote_read_dir     (
-    char *,
-    struct s_sync *,
-    struct s_sync_remote *);
+void sync_remote_read_dir     (char *,
+                               struct s_sync *,
+                               struct s_sync_remote *,
+                               struct s_sync_file_list *);
 
 long swap_endianness_long(long);
 int swap_endianness_int(int);
