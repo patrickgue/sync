@@ -1,5 +1,5 @@
 PROG=sync
-SRCS=sync.c test.c
+SRCS=sync.c
 MAN=
 
 CFLAGS+=-g -Wall -I./lib/opt/include

@@ -12,25 +12,26 @@
 #include <sys/types.h>
 #include <string.h>
 
-
 #include "sync.h"
 #include "log.h"
-#include "test.h"
 
 int main(int argc, char **argv)
 {
     struct s_sync state;
-    struct s_sync_file_list changes_list, all_files_list, old_files_list, remote_file_list;
+    struct s_sync_file_list changes_list,
+                            all_files_list,
+                            old_files_list,
+                            remote_full_file_list,
+                            remote_new_file_list;
     struct s_sync_remote remote;
     char path[BUFSIZE], remote_path[BUFSIZE];
-    if (DEBUG)
-        test();
-    
+
     sync_state_init(&state, NULL);
     sync_changes_init(&changes_list);
     sync_changes_init(&all_files_list);
     sync_changes_init(&old_files_list);
-    sync_changes_init(&remote_file_list);
+    sync_changes_init(&remote_full_file_list);
+    sync_changes_init(&remote_new_file_list);
 
     snprintf(path, BUFSIZE, "%s/%s", state.local_base_dir, state.locations[0].path);
     sync_collect_changes(&state, path, &changes_list, &all_files_list);
@@ -51,7 +52,7 @@ int main(int argc, char **argv)
 
     if (DEBUG)
     {
-        LOG("CHANGES LIST (%d)", changes_list.location_count);
+        LOG("LOCAL CHANGES LIST (%d)", changes_list.location_count);
         sync_debug_list_changes(&changes_list);
     }
 
@@ -60,12 +61,14 @@ int main(int argc, char **argv)
     snprintf(remote_path, BUFSIZE, "%s/%s", state.remote_base_dir, state.locations[0].path);
     LOG("REMOTE PATH: %s", remote_path);
 
-    sync_remote_read_dir(remote_path, &state, &remote, &remote_file_list);
+    sync_remote_read_dir(remote_path, &state, &remote, &remote_full_file_list, &remote_new_file_list);
 
     if (DEBUG)
     {
-        LOG("REMOTE FILE LIST (%d)", remote_file_list.location_count);
-        sync_debug_list_changes(&remote_file_list);
+        LOG("REMOTE FULL FILE LIST (%d)", remote_full_file_list.location_count);
+        sync_debug_list_changes(&remote_full_file_list);
+        LOG("REMOTE NEW FILE LIST (%d)", remote_new_file_list.location_count);
+        sync_debug_list_changes(&remote_new_file_list);
     }
 
     sync_remote_cleanup(&remote);
@@ -292,11 +295,7 @@ void sync_store_file_tree(struct s_sync *state, struct s_sync_file_list *tree)
     for (i = 0; i < tree->location_count; i++)
     {
         fwrite(&(tree->locations[i].d_type), sizeof(char), 1, tree_file);
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        fwrite(&(swap_endianness_long(tree->locations[i].hash)), sizeof(long), 1, tree_file);
-#else
         fwrite(&(tree->locations[i].hash), sizeof(long), 1, tree_file);
-#endif
         fwrite(tree->locations[i].path, sizeof(char), PATH_LEN, tree_file);
     }
     fclose(tree_file);    
@@ -336,22 +335,6 @@ long sync_path_hash (char *str)
     }
 
     return hash;
-}
-
-
-long swap_endianness_long(long val)
-{
-    val = ((val << 8) & 0xFF00FF00FF00FF00ULL ) | ((val >> 8) & 0x00FF00FF00FF00FFULL );
-    val = ((val << 16) & 0xFFFF0000FFFF0000ULL ) | ((val >> 16) & 0x0000FFFF0000FFFFULL );
-    return (val << 32) | ((val >> 32) & 0xFFFFFFFFULL);
-}
-
-int swap_endianness_int(int num)
-{
-    return ((num>>24)&0xff) |
-        ((num<<8)&0xff0000) |
-        ((num>>8)&0xff00) |
-        ((num<<24)&0xff000000);
 }
 
 /*
@@ -435,7 +418,11 @@ void sync_remote_init(struct s_sync *state, struct s_sync_remote *remote)
 }
 
 
-void sync_remote_read_dir(char *path, struct s_sync *state, struct s_sync_remote *remote, struct s_sync_file_list *list)
+void sync_remote_read_dir(char *path,
+                          struct s_sync *state,
+                          struct s_sync_remote *remote,
+                          struct s_sync_file_list *list,
+                          struct s_sync_file_list *new)
 {
     int rc, remote_base_dir_len;
     char new_path[BUFSIZ], mem[512];
@@ -455,10 +442,15 @@ void sync_remote_read_dir(char *path, struct s_sync *state, struct s_sync_remote
 
             snprintf(new_path, BUFSIZE, "%s/%s", path, mem);
             sync_remote_changes_append(list, new_path + remote_base_dir_len, attrs.permissions);
-            if ((attrs.permissions & LIBSSH2_SFTP_S_IFDIR) != 0)
+            
+            if (attrs.permissions & LIBSSH2_SFTP_S_IFDIR)
             {
                 LOG("new_path: %s", new_path);
-                sync_remote_read_dir(new_path, state, remote, list);
+                sync_remote_read_dir(new_path, state, remote, list, new);
+            }
+            else if (attrs.mtime > state->last_sync)
+            {
+                sync_remote_changes_append(new, new_path + remote_base_dir_len, attrs.permissions);
             }
         }
         else
@@ -495,6 +487,7 @@ void sync_remote_changes_append(struct s_sync_file_list *changes,
         type = DT_LNK;
 
     changes->locations[changes->location_count].d_type = type;
+    changes->locations[changes->location_count].delete = false;
     changes->locations[changes->location_count].hash = sync_path_hash(path);
     strncpy(changes->locations[changes->location_count].path, path, PATH_LEN);
     changes->location_count++;
